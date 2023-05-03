@@ -1,0 +1,22 @@
+"marital_status_code","marital_status_definition","marital_status_prob"
+"1A","Scottish",0.7
+"1B","Other British",0.11
+"1C","Irish",0.01
+"1K","Gypsy/ Traveller",0.01
+"1L","Polish",0.01
+"1Z","Other white ethnic group",0.01
+"2A","Any mixed or multiple ethnic groups",0.01
+"3F","Pakistani, Pakistani Scottish or Pakistani British",0.01
+"3G","Indian, Indian Scottish or Indian British",0.01
+"3H","Bangladeshi, Bangladeshi Scottish or Bangladeshi British",0.01
+"3J","Chinese, Chinese Scottish or Chinese British",0.01
+"3Z","Other Asian, Asian Scottish or Asian British",0.01
+"4D","African, African Scottish or African British",0.01
+"4Y","Other African",0.01
+"5C","Caribbean, Caribbean Scottish or Caribbean British",0.01
+"5D","Black, Black Scottish or Black British",0.01
+"5Y","Other Caribbean or Black",0.01
+"6A","Arab, Arab Scottish or Arab British",0.01
+"6Z","Other ethnic group",0.01
+98,"Refused/Not provided by patient",0.01
+99,"Not Known",0.01

@@ -1,0 +1,351 @@
+#Files
+```{r}
+library(tidyverse)
+
+set.seed(8675309)
+
+#coding definitions are all taken from ISD here
+#https://www.isdscotland.org/Products-and-Services/Data-Definitions-and-References/National-Reference-Files/
+
+#probabilities of values are just guesses and can be altered
+
+#files that give the possible values and probabilities
+marital_status_values <- read_csv("marital_status.csv")
+ethnic_group_values <- read_csv("ethnic_group.csv")
+specialty_values <- read_csv("specialties.csv")
+```
+
+
+# Population demographics
+```{r}
+#total population
+pop_size = 500000
+
+#create 10-digit unique ID
+id_1 <- rep("demo", pop_size)
+id_2 <- c(100000:599999)
+id <- paste0(id_1, id_2) #500k identifiers
+
+#create a reasonable age distribution for the population
+years <- c(0:100)
+age_prob <-
+  dlogis(years, scale = 27, location = 20) #better dist for steeper age dropoff?
+age <- sample(years, size = pop_size, prob = age_prob, replace = TRUE)
+
+#assign sex
+sex_codes <- c(0, 1)
+sex_prob <- c(0.5, 0.5)
+sex <- sample(sex_codes, prob = sex_prob, size = pop_size, replace = T)
+
+#assign ethnicity from SMR codes
+ethnic_group_codes <- ethnic_group_values$ethnic_group_code
+ethnic_group_prob <-  ethnic_group_values$ethnic_group_prob
+ethnic_group <- sample(ethnic_group_codes, prob = ethnic_group_prob, size = pop_size, replace = T)
+
+#assign home area deprivation value (SIMD decile)
+simd_decile_codes <- c(1:10)
+simd_decile_prob <- dnorm(c(1:10), mean = 4, sd = 3)
+simd_decile <- sample(simd_decile_codes, prob = simd_decile_prob, size = pop_size, replace = T)
+poverty_score <- 11 - simd_decile #reverse simd scale for clarity
+
+#assign marital status from SMR codes
+marital_status_codes <- marital_status_values$marital_status_code
+marital_status_prob <-  marital_status_values$marital_status_prob
+marital_status <- sample(marital_status_codes, prob = marital_status_prob, size = pop_size, replace = T)
+
+#create demographic table for whole population
+city_pop <- tibble(id, age, sex, marital_status, ethnic_group, simd_decile, poverty_score)
+
+#make children single
+city_pop <-
+  city_pop %>%
+  mutate(marital_status =
+           ifelse(age < 20, "A", marital_status))
+
+#assign birthdays
+city_pop <-
+  city_pop %>%
+  rowwise() %>%
+  mutate(mob = sample(c(1:12), size = 1)) %>% #all birth months equally likely
+  ungroup() %>%
+  mutate(dob = paste(2023 - age, mob, 1, sep = "-")) %>% #always born on 1st
+  select(-mob)
+
+#convert to date format
+city_pop <-
+  city_pop %>%
+    mutate(dob = as.Date(dob, "%Y-%m-%d"))
+
+#check distributions of demographic variables for whole city
+hist(age)
+hist(sex)
+barplot(prop.table(table(ethnic_group)))
+hist(simd_decile)
+barplot(prop.table(table(marital_status)))
+
+#remove temp files
+rm(age, age_prob, ethnic_group, ethnic_group_codes, ethnic_group_prob, id, id_1, id_2, marital_status, marital_status_codes, marital_status_prob, pop_size, poverty_score, sex, sex_codes, sex_prob, simd_decile, simd_decile_codes, simd_decile_prob, years)
+```
+
+#Care likelihood
+```{r}
+#Give each person in population a probability for different kinds of care
+#Different probabilities based on age, poverty, and sex
+#Different probabilities based on care type
+
+city_pop <-
+  city_pop %>%
+  mutate(
+    care_score = age*age/10, #older more likely to get care
+    care_score = care_score + (poverty_score * poverty_score * 2), #poorer more likely
+    care_score = ifelse(sex == 0, care_score + 50, care_score), #women more likely
+    prob_care = care_score / (max(care_score) - min(care_score)), #scale 0-1
+    prob_rx = prob_care,        #prob of a prescription
+    prob_op = prob_care / 1.25, #prob of an out patient admission
+    prob_ip = prob_care / 5,    #prob of an in patient admission
+    prob_ae = prob_care / 7.5)  #prob of an a&e admission
+```
+
+# Codes from ISD
+```{r}
+#https://www.ndc.scot.nhs.uk/Dictionary-A-Z/Definitions/index.asp?Search=S&ID=473&Title=Specialty/Discipline
+
+#https://www.isdscotland.org/Products-and-Services/Data-Definitions-and-References/National-Reference-Files/
+
+specialty_codes <- c("A1","A11","A2","A21","A3","A4","A5","A6","A7","A8","A81","A82","A9","AA","AB","AC","AD","AF","AFA","AG","AH","AJ","AK","AM","AN","AP","AQ","AR","AS","AT","AV","AW","C1","C11","C12","C13","C14","C2","C3","C31","C4","C41","C42","C5","C51","C6","C7","C8","C9","C91","CA","CB","CC","D1","D2","D3","D4","D5","D6","D61","D62","D63","D7","D8","D9","DA","DB","DC","DD","DE","E1","E11","E12","F1","F1A","F1B","F2","F3","F31","F32","F4","G1","G1A","G2","G21","G22","G3","G4","G5","G6","G61","G62","G63","H1","H1A","H2","J1","J2","J3","J4","J5","J6","J61","J62","J7","J8","J9","R1","R11","R2","R3","R4","R41","R5","R6","R7","R8","R81","R82","R9","RA","RB","RC","RD","RE","RF","RF1","RF2","RG","RH","RJ","RK","RK1","RK2","RK3","RK4","RL","RM","RP","RS","RT","RU","RU1","RU2","RU3","RU4","RU5","RU6","RU7","RU8","T1","T11","T2","T21","T3","T31","T4","T41","T5","T6","T7","T8")
+
+significant_facility_codes <- c("11","13","14","16","17","18","19","1A","1B","1C","1D","1E","1F","1G","1H","1L","1M","1N","1P","1Q","1R","1S","1T","31","32","33","34","35","36","37","38","39","40","41")
+
+admission_type_codes <- c(30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 48, 10, 11, 12, 18, 19, 20, 21, 22)
+
+
+facility_codes <- c(11, 31, 32, 33, 34, 35, 36, 37, 38, 39)
+facility_prob <- c(0.01, 0.75, 0.01, 0.07, 0.11, 0.01, 0.01, 0.01, 0.01, 0.01)
+
+referral_type_codes <- c(1, 2, 3)
+referral_type_prob <- c(0.25, 0.25, 0.5)
+
+attendance_status_codes <- c(1, 5, 8)
+attendance_status_prob <- c(0.7, 0.05, 0.25)
+
+referral_source_codes <- c("1", "2", "4", "5", "8", "9", "A", "E", "N", "R")
+referral_source_prob <- c(0.6, 0.2, 0.01, 0.05, 0.01, 0.01, 0.01, 0.05, 0.05, 0.01)
+
+attendance_followup_codes <- c(1, 2, 3, 4, 5, 8)
+attendance_followup_prob <- c(0.01, 0.33, 0.5, 0.05, 0.1, 0.01)
+
+mode_contact_codes <- c(1, 2, 3, 4)
+mode_contact_prob <- c(0.54, 0.30, 0.15, 0.01)
+```
+
+
+#Outpatient care
+```{r}
+#Set these values for total patients seen over a given time, with a max number of attendances
+total_patients = 20000
+max_attendances_per_patient = 20
+start_date = as.Date('2022/01/01')
+end_date = as.Date('2022/12/31')
+
+#Pull the people with outpatient attendances based on their probability of care
+id <- sample(city_pop$id, prob = city_pop$prob_op, size = total_patients)
+
+#Make a table
+op <- 
+  tibble(id)
+
+#Create a total number of attendances per person in the given time, with more visits exponentially less likely
+op <-
+op %>%
+  mutate(n_visits = 
+           sample(c(1:max_attendances_per_patient),
+                  size = total_patients, 
+                  prob = 
+                    dexp(c(1:max_attendances_per_patient)), replace = T)) %>% 
+  uncount(n_visits) #expands for one row per visit
+
+#Assign a date to each visit, with any date in the set range being equally likely
+op <-
+op %>%
+  rowwise() %>%
+  mutate(visit_date = 
+           sample(seq(start_date, end_date, by="day"), 1)) %>%
+  ungroup()
+
+#Fill in attendance details from probabilities set above
+op <-
+op %>%
+  rowwise() %>%
+  mutate(specialty = sample(specialty_codes, size = 1),
+         significant_facility = sample(facility_codes, size = 1, prob = facility_prob),
+         referral_type = sample(referral_type_codes, size = 1, prob = referral_type_prob),
+         attendance_status = sample(attendance_status_codes, size = 1, prob = attendance_status_prob),
+         referral_source = sample(referral_source_codes, size = 1, prob = referral_source_prob),
+         attendance_followup = sample(attendance_followup_codes, size = 1, prob = attendance_followup_prob),
+         mode_contact = sample(mode_contact_codes, size = 1, prob = mode_contact_prob)) %>%
+  ungroup()
+
+```
+
+# Inpatient care
+```{r}
+#should be a function? Nicked from outpatient chunk
+
+total_patients = 10000
+max_attendances_per_patient = 10
+max_events_per_attendance = 5
+start_date = as.Date('2022/01/01')
+end_date = as.Date('2022/12/31')
+
+id <- sample(city_pop$id, prob = city_pop$prob_ip, size = total_patients)
+
+ip <- 
+  tibble(id)
+
+ip <-
+ip %>%
+  mutate(n_admissions = 
+           sample(c(1:max_attendances_per_patient),
+                  size = total_patients, 
+                  prob = 
+                    dexp(c(1:max_attendances_per_patient)), replace = T)) %>% #exp decay in visit #s
+  uncount(n_admissions) #expands for one row per visit
+
+ip <-
+  ip %>%
+  rowwise() %>%
+  mutate(
+    admission_date =
+      sample(seq(start_date, end_date, by = "day"), 1),
+    length_stay =
+      sample(
+        c(1:50), size = 1, prob = dnorm(c(1:50), mean = 3, sd = 8)),
+    discharge_date = admission_date + length_stay - 1) %>%
+  ungroup()
+
+ip <-
+ip %>%
+  rowwise() %>%
+  mutate(n_events = 
+           sample(c(1:5),
+                  size = 1, 
+                  prob = 
+                    dnorm(c(1:5), mean = 2, sd = 2))) %>%
+  ungroup
+
+hist(ip$n_events)
+
+#https://www.cdc.gov/nchs/icd/Comprehensive-Listing-of-ICD-10-CM-Files.htm
+#https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM/April-1-2023-Update/
+#https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM/April-1-2023-Update/icd10cm-code%20descriptions-%20April%201%202023.zip
+
+#grab all ICD10 codes
+icd10_codes <-
+  read_delim("icd10cm-codes.txt", col_names = F) %>%
+  select(X1) %>%
+  rename(icd10 = X1) %>%
+  pull(icd10)
+
+#ip <- ip %>% uncount(n_events)
+
+#add diagnostic codes to admissions
+ip <-
+ip %>%
+  rowwise() %>%
+  mutate(main_diagnosis = sample(icd10_codes, size = 1),
+         second_diagnosis = sample(icd10_codes, size = 1),
+         third_diagnosis = sample(icd10_codes, size = 1),
+         fourth_diagnosis = sample(icd10_codes, size = 1),
+         fifth_diagnosis = sample(icd10_codes, size = 1)) %>%
+  ungroup()
+
+#absolutely silly way to remove some of the diagnostic codes
+ip <-
+ip %>%
+  mutate(rand = runif(1:length(ip$id)),
+         second_diagnosis = replace(second_diagnosis, which(rand < 0.1), NA),
+         rand = runif(1:length(ip$id)),
+         third_diagnosis = 
+           if_else(!is.na(second_diagnosis), 
+                   replace(third_diagnosis, which(rand < 0.2), NA),
+                   NA_character_),
+         rand = runif(1:length(ip$id)),
+         fourth_diagnosis = 
+           if_else(!is.na(second_diagnosis) & !is.na(third_diagnosis), 
+                   replace(fourth_diagnosis, which(rand < 0.2), NA),
+                   NA_character_),
+         rand = runif(1:length(ip$id)),
+         fifth_diagnosis = 
+           if_else(!is.na(second_diagnosis) & !is.na(third_diagnosis) & !is.na(fourth_diagnosis), 
+                   replace(fifth_diagnosis, which(rand < 0.2), NA),
+                   NA_character_)) %>%
+  select(-rand)
+
+
+#add specialty and facility
+ip <-
+ip %>%
+  rowwise() %>%
+  mutate(specialty = sample(specialty_codes, size = 1),
+         significant_facility = sample(significant_facility_codes, size = 1)) %>%
+  ungroup()
+```
+
+#Prescribing
+```{r}
+#should be a function?
+
+total_patients = 100000
+max_rx_per_patient = 100
+start_date = as.Date('2022/01/01')
+end_date = as.Date('2022/12/31')
+
+id <- sample(city_pop$id, prob = city_pop$prob_rx, size = total_patients)
+
+rx <- 
+  tibble(id) 
+
+rx <-
+rx %>%
+  mutate(n_rx = 
+           sample(c(1:max_rx_per_patient),
+                  size = total_patients, 
+                  prob = 
+                    dexp(c(1:max_rx_per_patient)), replace = T)) %>% #exp decay in visit #s
+  uncount(n_rx) #expands for one row per visit
+
+rx <-
+  rx %>%
+  rowwise() %>%
+  mutate(
+    date =
+      sample(seq(start_date, end_date, by = "day"), 1)) %>%
+  ungroup()
+
+#move this to file load
+bnf <-
+  read_delim("20221101_1667295842705_BNF_Code_Information.csv") %>%
+  janitor::clean_names()
+
+bnf_codes <- bnf %>% select(bnf_presentation_code) %>% as_vector()
+
+#randomly chose a drug code 
+rx <-
+rx %>%
+  rowwise() %>%
+  mutate(bnf_presentation_code = sample(bnf_codes, size = 1))
+
+# add all bnf details for drug
+rx <-
+rx %>% left_join(., bnf, by = "bnf_presentation_code")
+```
+
+
+
+
+
+
+
+
+
+
